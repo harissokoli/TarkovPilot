@@ -1,7 +1,7 @@
 "use client"
 
 import { useRef, useCallback, useState } from "react"
-import { Upload, ImagePlus, Trash2, RotateCw, RefreshCw, AlertCircle } from "lucide-react"
+import { Upload, ImagePlus, Trash2, RotateCw, RefreshCw, AlertCircle, Pencil } from "lucide-react"
 
 interface MapImageUploadProps {
   mapName: string
@@ -11,6 +11,7 @@ interface MapImageUploadProps {
   onUpload: (file: File) => Promise<void>
   onRotate: () => void
   onRemove: () => void
+  onEditBounds?: () => void
 }
 
 export function MapImageUpload({
@@ -21,6 +22,7 @@ export function MapImageUpload({
   onUpload,
   onRotate,
   onRemove,
+  onEditBounds,
 }: MapImageUploadProps) {
   const inputRef = useRef<HTMLInputElement>(null)
   const [isDragging, setIsDragging] = useState(false)
@@ -101,6 +103,16 @@ export function MapImageUpload({
             className="w-8 h-8 flex items-center justify-center bg-card border border-border rounded text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors"
           >
             <RotateCw size={14} />
+          </button>
+        )}
+        {hasImage && onEditBounds && (
+          <button
+            onClick={onEditBounds}
+            title="Edit marker bounds"
+            aria-label="Edit marker coordinate bounds"
+            className="w-8 h-8 flex items-center justify-center bg-card border border-border rounded text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors"
+          >
+            <Pencil size={14} />
           </button>
         )}
         {/* Remove — only when image exists */}

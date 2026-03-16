@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useCallback, useEffect } from "react"
+import type { MapBounds } from "@/types/map"
 
 export interface ImageDimensions {
   width: number
@@ -12,6 +13,7 @@ export interface MapImageState {
   width: number
   height: number
   rotation: 0 | 90 | 180 | 270
+  boundsOverride: MapBounds | null
 }
 
 const urlKey  = (id: string) => `tarkov-map-image:${id}`
@@ -23,12 +25,22 @@ function readFromStorage(mapId: string): MapImageState | null {
     const dataUrl = localStorage.getItem(urlKey(mapId))
     if (!dataUrl) return null
     const raw  = localStorage.getItem(metaKey(mapId))
-    const meta = raw ? JSON.parse(raw) : { width: 1024, height: 1024, rotation: 0 }
+    const meta = raw ? JSON.parse(raw) : { width: 1024, height: 1024, rotation: 0, boundsOverride: null }
+    const bounds = meta.boundsOverride
+    const boundsOverride =
+      bounds &&
+      typeof bounds.minX === "number" &&
+      typeof bounds.maxX === "number" &&
+      typeof bounds.minY === "number" &&
+      typeof bounds.maxY === "number"
+        ? bounds
+        : null
     return {
       dataUrl,
       width:    meta.width    ?? 1024,
       height:   meta.height   ?? 1024,
       rotation: meta.rotation ?? 0,
+      boundsOverride,
     }
   } catch {
     return null
@@ -42,6 +54,7 @@ function writeToStorage(mapId: string, state: MapImageState): boolean {
       width:    state.width,
       height:   state.height,
       rotation: state.rotation,
+      boundsOverride: state.boundsOverride,
     }))
     return true
   } catch (e) {
@@ -100,7 +113,14 @@ export function useMapImages(mapId: string) {
             if (!dataUrl) throw new Error("Failed to read file")
 
             const { width, height } = await measureImage(dataUrl)
-            const newState: MapImageState = { dataUrl, width, height, rotation: 0 }
+            const previous = readFromStorage(mapId)
+            const newState: MapImageState = {
+              dataUrl,
+              width,
+              height,
+              rotation: 0,
+              boundsOverride: previous?.boundsOverride ?? null,
+            }
 
             const saved = writeToStorage(mapId, newState)
             if (!saved) {
@@ -144,6 +164,18 @@ export function useMapImages(mapId: string) {
     setUploadError(null)
   }, [mapId])
 
+  const setBoundsOverride = useCallback(
+    (bounds: MapBounds | null) => {
+      setState((prev) => {
+        if (!prev) return prev
+        const next = { ...prev, boundsOverride: bounds }
+        writeToStorage(mapId, next)
+        return next
+      })
+    },
+    [mapId]
+  )
+
   // Derive the effective aspect ratio accounting for rotation
   // When rotated 90 or 270 degrees, width and height are swapped
   const effectiveDimensions: ImageDimensions | null = state
@@ -160,5 +192,7 @@ export function useMapImages(mapId: string) {
     uploadImage,
     rotateImage,
     removeImage,
+    boundsOverride: state?.boundsOverride ?? null,
+    setBoundsOverride,
   }
 }
