@@ -1,0 +1,39 @@
+[
+  {
+    "uid": "woods-ext-001",
+    "geometry": { "x": 420, "y": 1560 },
+    "updated": "2026-01-01T00:00:00.000Z",
+    "map": "woods",
+    "name": "UN Roadblock",
+    "category": "Extractions",
+    "subCategory": "PMC",
+    "level": 0,
+    "desc": "Paid extraction near the west checkpoint",
+    "imgs": [{ "img": "https://picsum.photos/id/1050/300/200" }],
+    "name_l10n": { "en": "UN Roadblock", "ru": "Блокпост ООН" },
+    "desc_l10n": { "en": "Paid extraction near the west checkpoint" }
+  },
+  {
+    "uid": "woods-loot-002",
+    "geometry": { "x": 1310, "y": 1000 },
+    "updated": "2026-01-02T00:00:00.000Z",
+    "map": "woods",
+    "name": "Medical Camp",
+    "category": "Loot",
+    "subCategory": "Medical",
+    "level": 0,
+    "desc": "High value loose loot and med bags"
+  },
+  {
+    "uid": "labs-key-003",
+    "geometry": { "x": 680, "y": 900 },
+    "updated": "2026-01-03T00:00:00.000Z",
+    "map": "labs",
+    "name": "Manager Office Keycard",
+    "category": "Keys",
+    "subCategory": "Keycard",
+    "level": 1,
+    "desc": "Useful for securing office routes",
+    "itemsUid": ["itm-111", "itm-222"]
+  }
+]
