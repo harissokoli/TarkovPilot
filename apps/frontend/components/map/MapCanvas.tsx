@@ -75,6 +75,9 @@ export function MapCanvas({
     if (!isEditingBounds) setDraftBounds(bounds)
   }, [bounds, isEditingBounds])
 
+  const { transform, onMouseDown, onMouseMove, onMouseUp, onTouchStart, onTouchMove, onTouchEnd, reset, zoomIn, zoomOut } =
+    usePanZoom(containerRef)
+
   useEffect(() => {
     if (!dragState) return
 
@@ -97,9 +100,6 @@ export function MapCanvas({
       window.removeEventListener("mouseup", onUp)
     }
   }, [dragState, transform.scale])
-
-  const { transform, onMouseDown, onMouseMove, onMouseUp, onTouchStart, onTouchMove, onTouchEnd, reset, zoomIn, zoomOut } =
-    usePanZoom(containerRef)
 
   const handleMarkerClick = useCallback(
     (marker: Marker) => {
