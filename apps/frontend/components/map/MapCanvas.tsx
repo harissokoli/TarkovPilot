@@ -1,9 +1,9 @@
 "use client"
 
-import { useRef, useCallback, useState, useMemo } from "react"
+import { useRef, useCallback, useState, useMemo, useEffect } from "react"
 import { ZoomIn, ZoomOut, RotateCcw } from "lucide-react"
 import type { Marker } from "@/types/marker"
-import type { MapConfig } from "@/types/map"
+import type { MapBounds, MapConfig } from "@/types/map"
 import type { ImageDimensions } from "@/hooks/use-map-images"
 import { usePanZoom } from "@/hooks/use-pan-zoom"
 import { coordToPercent, computeBounds } from "@/lib/markers"
@@ -21,9 +21,11 @@ interface MapCanvasProps {
   /** Current rotation applied to the uploaded image in degrees (0 | 90 | 180 | 270) */
   imageRotation: 0 | 90 | 180 | 270
   uploadError: string | null
+  boundsOverride: MapBounds | null
   onUploadImage: (file: File) => Promise<void>
   onRotateImage: () => void
   onRemoveImage: () => void
+  onSetBoundsOverride: (bounds: MapBounds | null) => void
 }
 
 export function MapCanvas({
@@ -35,12 +37,15 @@ export function MapCanvas({
   imageDimensions,
   imageRotation,
   uploadError,
+  boundsOverride,
   onUploadImage,
   onRotateImage,
   onRemoveImage,
+  onSetBoundsOverride,
 }: MapCanvasProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const [cdnFailed, setCdnFailed] = useState(false)
+  const [isEditingBounds, setIsEditingBounds] = useState(false)
 
   // Resolve image source: custom upload > CDN fallback
   const activeImageUrl = customImageUrl ?? (cdnFailed ? null : config.imageUrl)
@@ -57,12 +62,22 @@ export function MapCanvas({
   }, [imageDimensions, config.imageHeight, config.imageWidth])
 
   // Compute bounds from real marker coordinates (all markers, not just filtered)
-  const bounds = useMemo(
+  const computedBounds = useMemo(
     () => computeBounds(markers, config.bounds, 0.06),
     // recompute only when map changes or marker count changes
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [config.id, markers.length]
   )
+
+  const bounds = boundsOverride ?? computedBounds
+
+  const [draftBounds, setDraftBounds] = useState<MapBounds>(bounds)
+
+  useEffect(() => {
+    if (!isEditingBounds) {
+      setDraftBounds(bounds)
+    }
+  }, [bounds, isEditingBounds])
 
   const { transform, onMouseDown, onMouseMove, onMouseUp, onTouchStart, onTouchMove, onTouchEnd, reset, zoomIn, zoomOut } =
     usePanZoom(containerRef)
@@ -78,6 +93,24 @@ export function MapCanvas({
   const handleCanvasClick = useCallback(() => {
     onSelectMarker(null)
   }, [onSelectMarker])
+
+  const applyBounds = useCallback(() => {
+    const next: MapBounds = {
+      minX: Number(draftBounds.minX),
+      maxX: Number(draftBounds.maxX),
+      minY: Number(draftBounds.minY),
+      maxY: Number(draftBounds.maxY),
+    }
+    if (next.minX >= next.maxX || next.minY >= next.maxY) return
+    onSetBoundsOverride(next)
+    setIsEditingBounds(false)
+  }, [draftBounds, onSetBoundsOverride])
+
+  const resetBounds = useCallback(() => {
+    setDraftBounds(computedBounds)
+    onSetBoundsOverride(null)
+    setIsEditingBounds(false)
+  }, [computedBounds, onSetBoundsOverride])
 
   return (
     <div className="relative w-full h-full overflow-hidden bg-[oklch(0.11_0.005_240)]">
@@ -108,13 +141,6 @@ export function MapCanvas({
             willChange: "transform",
           }}
         >
-          {/*
-           * Aspect-ratio box: padding-top % = (imageHeight / imageWidth) * 100
-           * This gives the wrapper a real pixel height so the absolute-positioned
-           * marker overlay has correct dimensions to anchor left/top % against.
-           * When a custom image is uploaded we use its natural dimensions so
-           * markers are recalculated against the actual image pixel space.
-           */}
           <div
             style={{
               position: "relative",
@@ -122,7 +148,6 @@ export function MapCanvas({
               paddingTop: `${aspectRatio * 100}%`,
             }}
           >
-            {/* Map image */}
             {activeImageUrl ? (
               <img
                 key={`${activeImageUrl}-${imageRotation}`}
@@ -133,11 +158,7 @@ export function MapCanvas({
                   inset: 0,
                   width: "100%",
                   height: "100%",
-                  // Use contain so the image is never stretched/distorted.
-                  // The aspect-ratio wrapper already matches the image's own ratio
-                  // so contain effectively fills the box without deformation.
                   objectFit: "contain",
-                  // Apply rotation around the image centre
                   transform: imageRotation ? `rotate(${imageRotation}deg)` : undefined,
                   transformOrigin: "center center",
                 }}
@@ -147,7 +168,6 @@ export function MapCanvas({
                 }}
               />
             ) : (
-              // Dark grid placeholder when no image available
               <div
                 style={{
                   position: "absolute",
@@ -160,7 +180,6 @@ export function MapCanvas({
               />
             )}
 
-            {/* Marker layer — same bounds as the image */}
             <div
               style={{
                 position: "absolute",
@@ -169,11 +188,7 @@ export function MapCanvas({
               }}
             >
               {markers.map((marker) => {
-                const { px, py } = coordToPercent(
-                  marker.geometry.x,
-                  marker.geometry.y,
-                  bounds
-                )
+                const { px, py } = coordToPercent(marker.geometry.x, marker.geometry.y, bounds)
                 return (
                   <div
                     key={marker.uid}
@@ -198,7 +213,6 @@ export function MapCanvas({
         </div>
       </div>
 
-      {/* Upload overlay — shown when there is no map image */}
       {!hasImage && (
         <MapImageUpload
           mapName={config.displayName}
@@ -211,7 +225,6 @@ export function MapCanvas({
         />
       )}
 
-      {/* Zoom controls + image management */}
       <div className="absolute bottom-4 right-4 flex flex-col gap-1 z-10">
         <button
           onClick={zoomIn}
@@ -243,21 +256,71 @@ export function MapCanvas({
           onUpload={onUploadImage}
           onRotate={onRotateImage}
           onRemove={onRemoveImage}
+          onEditBounds={() => setIsEditingBounds((v) => !v)}
         />
       </div>
 
-      {/* Zoom level indicator */}
+      {isEditingBounds && (
+        <div className="absolute top-4 left-4 z-20 w-72 rounded border border-border bg-card/95 p-3 shadow-lg backdrop-blur">
+          <p className="text-xs font-semibold mb-2">Edit marker bounds</p>
+          <div className="grid grid-cols-2 gap-2 text-xs">
+            {([
+              ["minX", draftBounds.minX],
+              ["maxX", draftBounds.maxX],
+              ["minY", draftBounds.minY],
+              ["maxY", draftBounds.maxY],
+            ] as const).map(([key, value]) => (
+              <label key={key} className="flex flex-col gap-1">
+                <span className="text-muted-foreground">{key}</span>
+                <input
+                  type="number"
+                  value={value}
+                  onChange={(e) => {
+                    const next = Number(e.target.value)
+                    setDraftBounds((prev) => ({ ...prev, [key]: Number.isNaN(next) ? 0 : next }))
+                  }}
+                  className="h-8 rounded border border-border bg-background px-2 text-xs"
+                />
+              </label>
+            ))}
+          </div>
+          {(draftBounds.minX >= draftBounds.maxX || draftBounds.minY >= draftBounds.maxY) && (
+            <p className="text-[11px] text-destructive mt-2">min values must be lower than max values.</p>
+          )}
+          <div className="mt-3 flex justify-end gap-2">
+            <button
+              onClick={() => setIsEditingBounds(false)}
+              className="h-8 px-2 text-xs rounded border border-border hover:bg-secondary"
+            >
+              Cancel
+            </button>
+            <button onClick={resetBounds} className="h-8 px-2 text-xs rounded border border-border hover:bg-secondary">
+              Reset auto
+            </button>
+            <button
+              onClick={applyBounds}
+              disabled={draftBounds.minX >= draftBounds.maxX || draftBounds.minY >= draftBounds.maxY}
+              className="h-8 px-2 text-xs rounded bg-primary text-primary-foreground disabled:opacity-50"
+            >
+              Apply
+            </button>
+          </div>
+        </div>
+      )}
+
       <div className="absolute bottom-4 left-4 z-10 pointer-events-none">
         <span className="text-[10px] text-muted-foreground bg-card/80 border border-border px-2 py-1 rounded tabular-nums">
           {Math.round(transform.scale * 100)}%
         </span>
       </div>
 
-      {/* Marker count */}
-      <div className="absolute top-4 right-4 z-10 pointer-events-none">
+      <div className="absolute top-4 right-4 z-10 pointer-events-none flex flex-col items-end gap-1">
         <span className="text-[10px] text-muted-foreground bg-card/80 border border-border px-2 py-1 rounded tabular-nums">
           {markers.length} markers
         </span>
+        {boundsOverride && (
+          <span className="text-[10px] text-primary bg-card/80 border border-border px-2 py-1 rounded">Using custom bounds</span>
+        )}
       </div>
     </div>
   )

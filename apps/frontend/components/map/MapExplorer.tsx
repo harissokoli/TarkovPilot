@@ -32,6 +32,8 @@ export function MapExplorer() {
     uploadImage,
     rotateImage,
     removeImage,
+    boundsOverride,
+    setBoundsOverride,
   } = useMapImages(activeMapId)
 
   const {
@@ -158,6 +160,8 @@ export function MapExplorer() {
                 onUploadImage={uploadImage}
                 onRotateImage={rotateImage}
                 onRemoveImage={removeImage}
+                boundsOverride={boundsOverride}
+                onSetBoundsOverride={setBoundsOverride}
               />
             )}
           </ErrorBoundary>
