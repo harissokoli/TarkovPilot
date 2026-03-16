@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="2048" height="2048" viewBox="0 0 2048 2048">
+  <rect width="2048" height="2048" fill="#111827"/>
+  <circle cx="1024" cy="1024" r="760" fill="#1e293b" stroke="#334155" stroke-width="24"/>
+  <text x="60" y="120" fill="#e2e8f0" font-size="96" font-family="Arial">Labs B2</text>
+</svg>

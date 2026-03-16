@@ -1,51 +1,48 @@
-# TarkovPilot
+# TarkovPilot Monorepo
 
+This repository is now a monorepo with:
 
+- `apps/backend/TarkovPilot`: existing C# backend preserved
+- `apps/frontend`: new production-ready React + Vite + TypeScript interactive map client
 
-TarkovPilot is an Escape from Tarkov companion application that can automatically upload your screenshots file names to https://tarkov-market.com and show your position on map.
+## Frontend features
 
-## Features
+- Static image map renderer with smooth pan/zoom (`react-zoom-pan-pinch`)
+- Typed marker model with defensive JSON parsing
+- Map selection, floor/level switching, category filtering, text search
+- Localization fallback (`requested lang -> en -> base field`)
+- Marker details panel with image previews and metadata
+- JSON upload support (local file)
+- Error boundary and empty-safe UI behavior
 
-- Maps
-    - Show you position on map (from screenshots)
-    - <img src="https://github.com/ggdiam/TarkovPilot/blob/master/images/pilot-woods.png"/>
-    - Show your look direction (require **pro** status on TM website)
-    - <img src="https://github.com/ggdiam/TarkovPilot/blob/master/images/pilot-woods-look.png"/>
-    - Map change (if possible to determine from logs)
-    - Quests complete (if possible to determine from logs)
-- Automatic updates
-    - Press button on website to update  
-      No need to download new version every time
+## Quick start (frontend)
 
-## UI
+```bash
+npm install
+npm run dev
+```
 
-App have no UI, only tray icon.  
-All configurations and logs you can find on TM website TarkovPilot's [page](https://tarkov-market.com/pilot)
+Then open the Vite URL shown in terminal.
 
-<img src="https://github.com/ggdiam/TarkovPilot/blob/master/images/TarkovPilot%20page.png"/>
+### Other commands
 
-## Installation
+```bash
+npm run build
+npm run typecheck
+npm run preview
+```
 
-- Latest version you can find on TM website TarkovPilot's [page](https://tarkov-market.com/pilot).
-- Here on GitHub in [latest release](https://github.com/ggdiam/TarkovPilot/releases)
+## Backend
 
-Downloaded, extract the zip and run the `TarkovPilot.exe` executable. Open [TM website](https://tarkov-market.com/pilot), and see it's connected.
+Backend project remains in:
 
-## FAQ
+- `apps/backend/TarkovPilot/TarkovPilot.csproj`
+- `TarkovPilot.sln` updated to point to the new path
 
-### How does TarkovPilot work?
+## Data source
 
-- TarkovPilot watches the log files that the game creates as it's running.  
-  From some log messages possible to determine map, you are loading in.
+Use bundled sample markers in:
 
-- TarkovPilot watches the screenshot files that you make.  
-  In every screenshot file name coded info about position, where it was created.  
-  TarkovPilot just get this position and upload to TM website and show your position on map.
+- `apps/frontend/src/features/maps/data/sampleMarkers.json`
 
-### Is TarkovPilot a cheat?
-
-No.  
-TarkovPilot just reading game logs, and your game screenshots.  
-Thats all.  
-There is no direct interaction with the game or game memory.  
-Also BSG or BattleEye devs always can check source code here to be sure app is purely safe and doesn't break TOS.
+Or upload your own decoded marker JSON file using the file picker in the app.
