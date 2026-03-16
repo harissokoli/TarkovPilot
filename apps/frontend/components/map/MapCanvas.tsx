@@ -1,7 +1,7 @@
 "use client"
 
 import { useRef, useCallback, useState, useMemo, useEffect, type MouseEvent as ReactMouseEvent } from "react"
-import { ZoomIn, ZoomOut, RotateCcw, GripHorizontal } from "lucide-react"
+import { ZoomIn, ZoomOut, RotateCcw } from "lucide-react"
 import type { Marker } from "@/types/marker"
 import type { MapBounds, MapConfig } from "@/types/map"
 import type { ImageDimensions } from "@/hooks/use-map-images"
@@ -16,9 +16,7 @@ interface MapCanvasProps {
   selectedMarker: Marker | null
   onSelectMarker: (marker: Marker | null) => void
   customImageUrl: string | null
-  /** Natural pixel dimensions of the uploaded image (already swapped when rotated 90/270) */
   imageDimensions: ImageDimensions | null
-  /** Current rotation applied to the uploaded image in degrees (0 | 90 | 180 | 270) */
   imageRotation: 0 | 90 | 180 | 270
   uploadError: string | null
   boundsOverride: MapBounds | null
@@ -27,6 +25,8 @@ interface MapCanvasProps {
   onRemoveImage: () => void
   onSetBoundsOverride: (bounds: MapBounds | null) => void
 }
+
+type DragBoundField = "minX" | "maxX" | "minY" | "maxY"
 
 export function MapCanvas({
   config,
@@ -47,13 +47,9 @@ export function MapCanvas({
   const [cdnFailed, setCdnFailed] = useState(false)
   const [isEditingBounds, setIsEditingBounds] = useState(false)
 
-  // Resolve image source: custom upload > CDN fallback
   const activeImageUrl = customImageUrl ?? (cdnFailed ? null : config.imageUrl)
   const hasImage = activeImageUrl !== null
 
-  // Aspect ratio for the padding-top trick:
-  // If user uploaded an image, use its real pixel dimensions so markers
-  // map perfectly onto it. Otherwise fall back to the config dimensions.
   const aspectRatio = useMemo(() => {
     if (imageDimensions && imageDimensions.width > 0) {
       return imageDimensions.height / imageDimensions.width
@@ -61,40 +57,38 @@ export function MapCanvas({
     return config.imageHeight / config.imageWidth
   }, [imageDimensions, config.imageHeight, config.imageWidth])
 
-  // Compute bounds from real marker coordinates (all markers, not just filtered)
   const computedBounds = useMemo(
     () => computeBounds(markers, config.bounds, 0.06),
-    // recompute only when map changes or marker count changes
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [config.id, markers.length]
   )
 
   const bounds = boundsOverride ?? computedBounds
-
   const [draftBounds, setDraftBounds] = useState<MapBounds>(bounds)
-  const [dragField, setDragField] = useState<{
-    field: keyof MapBounds
-    startX: number
+  const [dragState, setDragState] = useState<{
+    field: DragBoundField
+    startClient: number
     startValue: number
   } | null>(null)
 
   useEffect(() => {
-    if (!isEditingBounds) {
-      setDraftBounds(bounds)
-    }
+    if (!isEditingBounds) setDraftBounds(bounds)
   }, [bounds, isEditingBounds])
 
   useEffect(() => {
-    if (!dragField) return
+    if (!dragState) return
 
     const onMove = (event: MouseEvent) => {
-      const deltaX = event.clientX - dragField.startX
-      const sensitivity = event.shiftKey ? 2.5 : 0.75
-      const nextValue = dragField.startValue + deltaX * sensitivity
-      setDraftBounds((prev) => ({ ...prev, [dragField.field]: Number(nextValue.toFixed(2)) }))
+      const isHorizontal = dragState.field === "minX" || dragState.field === "maxX"
+      const cursor = isHorizontal ? event.clientX : event.clientY
+      const delta = cursor - dragState.startClient
+      const direction = dragState.field === "maxX" || dragState.field === "maxY" ? 1 : -1
+      const sensitivity = (event.shiftKey ? 2 : 0.7) / Math.max(transform.scale, 0.5)
+      const next = dragState.startValue + delta * sensitivity * direction
+      setDraftBounds((prev) => ({ ...prev, [dragState.field]: Number(next.toFixed(2)) }))
     }
 
-    const onUp = () => setDragField(null)
+    const onUp = () => setDragState(null)
 
     window.addEventListener("mousemove", onMove)
     window.addEventListener("mouseup", onUp)
@@ -102,12 +96,11 @@ export function MapCanvas({
       window.removeEventListener("mousemove", onMove)
       window.removeEventListener("mouseup", onUp)
     }
-  }, [dragField])
+  }, [dragState, transform.scale])
 
   const { transform, onMouseDown, onMouseMove, onMouseUp, onTouchStart, onTouchMove, onTouchEnd, reset, zoomIn, zoomOut } =
     usePanZoom(containerRef)
 
-  // Selecting a marker does NOT pan/zoom — user controls the viewport manually
   const handleMarkerClick = useCallback(
     (marker: Marker) => {
       onSelectMarker(selectedMarker?.uid === marker.uid ? null : marker)
@@ -119,28 +112,23 @@ export function MapCanvas({
     onSelectMarker(null)
   }, [onSelectMarker])
 
-  const setBoundField = useCallback((field: keyof MapBounds, value: number) => {
+  const setBoundField = useCallback((field: DragBoundField, value: number) => {
     setDraftBounds((prev) => ({ ...prev, [field]: Number.isNaN(value) ? 0 : value }))
   }, [])
 
-  const startDragField = useCallback((field: keyof MapBounds, event: ReactMouseEvent<HTMLButtonElement>) => {
-    event.preventDefault()
-    setDragField({
-      field,
-      startX: event.clientX,
-      startValue: draftBounds[field],
-    })
-  }, [draftBounds])
+  const startBoundaryDrag = useCallback(
+    (field: DragBoundField, event: ReactMouseEvent<HTMLButtonElement>) => {
+      event.preventDefault()
+      event.stopPropagation()
+      const startClient = field === "minY" || field === "maxY" ? event.clientY : event.clientX
+      setDragState({ field, startClient, startValue: draftBounds[field] })
+    },
+    [draftBounds]
+  )
 
   const applyBounds = useCallback(() => {
-    const next: MapBounds = {
-      minX: Number(draftBounds.minX),
-      maxX: Number(draftBounds.maxX),
-      minY: Number(draftBounds.minY),
-      maxY: Number(draftBounds.maxY),
-    }
-    if (next.minX >= next.maxX || next.minY >= next.maxY) return
-    onSetBoundsOverride(next)
+    if (draftBounds.minX >= draftBounds.maxX || draftBounds.minY >= draftBounds.maxY) return
+    onSetBoundsOverride({ ...draftBounds })
     setIsEditingBounds(false)
   }, [draftBounds, onSetBoundsOverride])
 
@@ -152,7 +140,6 @@ export function MapCanvas({
 
   return (
     <div className="relative w-full h-full overflow-hidden bg-[oklch(0.11_0.005_240)]">
-      {/* Pan / zoom container */}
       <div
         ref={containerRef}
         className="map-canvas w-full h-full"
@@ -166,7 +153,6 @@ export function MapCanvas({
         onClick={handleCanvasClick}
         aria-label={`${config.displayName} map`}
       >
-        {/* Transformed layer */}
         <div
           style={{
             position: "absolute",
@@ -179,13 +165,7 @@ export function MapCanvas({
             willChange: "transform",
           }}
         >
-          <div
-            style={{
-              position: "relative",
-              width: "100%",
-              paddingTop: `${aspectRatio * 100}%`,
-            }}
-          >
+          <div style={{ position: "relative", width: "100%", paddingTop: `${aspectRatio * 100}%` }}>
             {activeImageUrl ? (
               <img
                 key={`${activeImageUrl}-${imageRotation}`}
@@ -218,13 +198,7 @@ export function MapCanvas({
               />
             )}
 
-            <div
-              style={{
-                position: "absolute",
-                inset: 0,
-                pointerEvents: "none",
-              }}
-            >
+            <div style={{ position: "absolute", inset: 0, pointerEvents: "none" }}>
               {markers.map((marker) => {
                 const { px, py } = coordToPercent(marker.geometry.x, marker.geometry.y, bounds)
                 return (
@@ -247,6 +221,35 @@ export function MapCanvas({
                 )
               })}
             </div>
+
+            {isEditingBounds && (
+              <div className="absolute inset-0 pointer-events-none">
+                <button
+                  type="button"
+                  onMouseDown={(e) => startBoundaryDrag("minX", e)}
+                  className="absolute left-0 top-0 bottom-0 w-3 -translate-x-1/2 bg-primary/30 border border-primary/70 rounded pointer-events-auto cursor-ew-resize"
+                  title="Drag map edge to adjust minX"
+                />
+                <button
+                  type="button"
+                  onMouseDown={(e) => startBoundaryDrag("maxX", e)}
+                  className="absolute right-0 top-0 bottom-0 w-3 translate-x-1/2 bg-primary/30 border border-primary/70 rounded pointer-events-auto cursor-ew-resize"
+                  title="Drag map edge to adjust maxX"
+                />
+                <button
+                  type="button"
+                  onMouseDown={(e) => startBoundaryDrag("minY", e)}
+                  className="absolute left-0 right-0 top-0 h-3 -translate-y-1/2 bg-primary/30 border border-primary/70 rounded pointer-events-auto cursor-ns-resize"
+                  title="Drag map edge to adjust minY"
+                />
+                <button
+                  type="button"
+                  onMouseDown={(e) => startBoundaryDrag("maxY", e)}
+                  className="absolute left-0 right-0 bottom-0 h-3 translate-y-1/2 bg-primary/30 border border-primary/70 rounded pointer-events-auto cursor-ns-resize"
+                  title="Drag map edge to adjust maxY"
+                />
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -310,28 +313,16 @@ export function MapCanvas({
             ] as const).map(([key, value]) => (
               <label key={key} className="flex flex-col gap-1">
                 <span className="text-muted-foreground">{key}</span>
-                <div className="flex items-center gap-1">
-                  <input
-                    type="number"
-                    value={value}
-                    onChange={(e) => {
-                      setBoundField(key, Number(e.target.value))
-                    }}
-                    className="h-8 flex-1 rounded border border-border bg-background px-2 text-xs"
-                  />
-                  <button
-                    type="button"
-                    onMouseDown={(e) => startDragField(key, e)}
-                    title="Drag left/right to adjust"
-                    className="h-8 w-8 rounded border border-border bg-background text-muted-foreground hover:text-foreground cursor-ew-resize"
-                  >
-                    <GripHorizontal size={13} className="mx-auto" />
-                  </button>
-                </div>
+                <input
+                  type="number"
+                  value={value}
+                  onChange={(e) => setBoundField(key, Number(e.target.value))}
+                  className="h-8 rounded border border-border bg-background px-2 text-xs"
+                />
               </label>
             ))}
           </div>
-          <p className="mt-2 text-[11px] text-muted-foreground">Tip: drag the handle next to each field to quickly tune bounds.</p>
+          <p className="mt-2 text-[11px] text-muted-foreground">Drag the highlighted edges on the map to adjust bounds (Shift = faster).</p>
           {(draftBounds.minX >= draftBounds.maxX || draftBounds.minY >= draftBounds.maxY) && (
             <p className="text-[11px] text-destructive mt-2">min values must be lower than max values.</p>
           )}
