@@ -1,7 +1,7 @@
 "use client"
 
-import { useRef, useCallback, useState, useMemo, useEffect } from "react"
-import { ZoomIn, ZoomOut, RotateCcw } from "lucide-react"
+import { useRef, useCallback, useState, useMemo, useEffect, type MouseEvent as ReactMouseEvent } from "react"
+import { ZoomIn, ZoomOut, RotateCcw, GripHorizontal } from "lucide-react"
 import type { Marker } from "@/types/marker"
 import type { MapBounds, MapConfig } from "@/types/map"
 import type { ImageDimensions } from "@/hooks/use-map-images"
@@ -72,12 +72,37 @@ export function MapCanvas({
   const bounds = boundsOverride ?? computedBounds
 
   const [draftBounds, setDraftBounds] = useState<MapBounds>(bounds)
+  const [dragField, setDragField] = useState<{
+    field: keyof MapBounds
+    startX: number
+    startValue: number
+  } | null>(null)
 
   useEffect(() => {
     if (!isEditingBounds) {
       setDraftBounds(bounds)
     }
   }, [bounds, isEditingBounds])
+
+  useEffect(() => {
+    if (!dragField) return
+
+    const onMove = (event: MouseEvent) => {
+      const deltaX = event.clientX - dragField.startX
+      const sensitivity = event.shiftKey ? 2.5 : 0.75
+      const nextValue = dragField.startValue + deltaX * sensitivity
+      setDraftBounds((prev) => ({ ...prev, [dragField.field]: Number(nextValue.toFixed(2)) }))
+    }
+
+    const onUp = () => setDragField(null)
+
+    window.addEventListener("mousemove", onMove)
+    window.addEventListener("mouseup", onUp)
+    return () => {
+      window.removeEventListener("mousemove", onMove)
+      window.removeEventListener("mouseup", onUp)
+    }
+  }, [dragField])
 
   const { transform, onMouseDown, onMouseMove, onMouseUp, onTouchStart, onTouchMove, onTouchEnd, reset, zoomIn, zoomOut } =
     usePanZoom(containerRef)
@@ -93,6 +118,19 @@ export function MapCanvas({
   const handleCanvasClick = useCallback(() => {
     onSelectMarker(null)
   }, [onSelectMarker])
+
+  const setBoundField = useCallback((field: keyof MapBounds, value: number) => {
+    setDraftBounds((prev) => ({ ...prev, [field]: Number.isNaN(value) ? 0 : value }))
+  }, [])
+
+  const startDragField = useCallback((field: keyof MapBounds, event: ReactMouseEvent<HTMLButtonElement>) => {
+    event.preventDefault()
+    setDragField({
+      field,
+      startX: event.clientX,
+      startValue: draftBounds[field],
+    })
+  }, [draftBounds])
 
   const applyBounds = useCallback(() => {
     const next: MapBounds = {
@@ -272,18 +310,28 @@ export function MapCanvas({
             ] as const).map(([key, value]) => (
               <label key={key} className="flex flex-col gap-1">
                 <span className="text-muted-foreground">{key}</span>
-                <input
-                  type="number"
-                  value={value}
-                  onChange={(e) => {
-                    const next = Number(e.target.value)
-                    setDraftBounds((prev) => ({ ...prev, [key]: Number.isNaN(next) ? 0 : next }))
-                  }}
-                  className="h-8 rounded border border-border bg-background px-2 text-xs"
-                />
+                <div className="flex items-center gap-1">
+                  <input
+                    type="number"
+                    value={value}
+                    onChange={(e) => {
+                      setBoundField(key, Number(e.target.value))
+                    }}
+                    className="h-8 flex-1 rounded border border-border bg-background px-2 text-xs"
+                  />
+                  <button
+                    type="button"
+                    onMouseDown={(e) => startDragField(key, e)}
+                    title="Drag left/right to adjust"
+                    className="h-8 w-8 rounded border border-border bg-background text-muted-foreground hover:text-foreground cursor-ew-resize"
+                  >
+                    <GripHorizontal size={13} className="mx-auto" />
+                  </button>
+                </div>
               </label>
             ))}
           </div>
+          <p className="mt-2 text-[11px] text-muted-foreground">Tip: drag the handle next to each field to quickly tune bounds.</p>
           {(draftBounds.minX >= draftBounds.maxX || draftBounds.minY >= draftBounds.maxY) && (
             <p className="text-[11px] text-destructive mt-2">min values must be lower than max values.</p>
           )}
